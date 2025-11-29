@@ -1,0 +1,59 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# VSCode settings
+.vscode/
+
+# Environments
+.env
+.venv
+.env/
+.venv/
+venv/
+
+# Logs and outputs
+logs/
+run_eval/
+runs/
+runs_mt/
+runs_mt_2/
+*.log
+*.out
+*.err
+
+# Checkpoints and model weights
+*.pt
+*.pth
+*.ckpt
+
+# HuggingFace cache
+huggingface/
+hf_cache/
+.hf_home/
+.cache/
+
+# Data
+data/
+datasets/
+
+# Shell history / system junk
+*.swp
+*.swo
+
+# Other large files
+*.pickle
+*.pkl
+*.npz
+*.npy
+
+# MacOS
+.DS_Store
+
+# Jupyter
+jupyter/
