@@ -272,9 +272,15 @@ class TranslationDataset(Dataset):
                  max_len=100,
                  src_lang="en",
                  tgt_lang="de",
-                 tokenizer="whitespace"):
+                 tokenizer="whitespace",
+                 extra_tgt_lang=None,
+                 add_src_lang_tag=False,
+                 ):
         self.src_lang = src_lang
         self.tgt_lang = tgt_lang
+        self.extra_tgt_lang = extra_tgt_lang
+        self.add_src_lang_tag = add_src_lang_tag
+
         self.dataset = load_dataset(
             "IWSLT/iwslt2017",
             f"iwslt2017-{src_lang}-{tgt_lang}",
@@ -300,28 +306,73 @@ class TranslationDataset(Dataset):
             self.sp_tgt.load(tgt_model_path)
 
         self.data = []
-        for item in self.dataset:
-            src_text = item["translation"][self.src_lang]
-            tgt_text = item["translation"][self.tgt_lang]
 
-            if self.tokenizer == "sentencepiece" and self.sp_src is not None:
-                src_tokens = self.sp_src.encode(src_text.strip(), out_type=str)
-                tgt_tokens = self.sp_tgt.encode(tgt_text.strip(), out_type=str)
-            elif self.tokenizer == "char":
-                src_tokens = char_tokenize(src_text)
-                tgt_tokens = char_tokenize(tgt_text)
-            else:
-                src_tokens = simple_tokenize(src_text)
-                tgt_tokens = simple_tokenize(tgt_text)
+        def _add_examples_from_hf_dataset(hf_dataset, tgt_lang_for_this_pair):
+            for item in hf_dataset:
+                src_text = item["translation"][self.src_lang]
+                tgt_text = item["translation"][tgt_lang_for_this_pair]
 
-            if len(src_tokens) == 0 or len(tgt_tokens) == 0:
-                continue
-            if len(src_tokens) > max_len or len(tgt_tokens) > max_len:
-                continue
+                # add tag <2de> / <2fr>
+                if self.add_src_lang_tag and tgt_lang_for_this_pair is not None:
+                    lang_tag = f"<2{tgt_lang_for_this_pair}>"
+                    src_text = f"{lang_tag} {src_text}"
 
-            src_ids = numericalize(src_tokens, src_vocab, add_bos_eos=True)
-            tgt_ids = numericalize(tgt_tokens, tgt_vocab, add_bos_eos=True)
-            self.data.append((src_ids, tgt_ids))
+                if self.tokenizer == "sentencepiece" and self.sp_src is not None:
+                    src_tokens = self.sp_src.encode(src_text.strip(), out_type=str)
+                    tgt_tokens = self.sp_tgt.encode(tgt_text.strip(), out_type=str)
+                elif self.tokenizer == "char":
+                    src_tokens = char_tokenize(src_text)
+                    tgt_tokens = char_tokenize(tgt_text)
+                else:
+                    src_tokens = simple_tokenize(src_text)
+                    tgt_tokens = simple_tokenize(tgt_text)
+
+                if len(src_tokens) == 0 or len(tgt_tokens) == 0:
+                    continue
+                if len(src_tokens) > max_len or len(tgt_tokens) > max_len:
+                    continue
+
+                src_ids = numericalize(src_tokens, src_vocab, add_bos_eos=True)
+                tgt_ids = numericalize(tgt_tokens, tgt_vocab, add_bos_eos=True)
+                self.data.append((src_ids, tgt_ids))
+
+        _add_examples_from_hf_dataset(self.dataset, self.tgt_lang)
+
+        # second language
+        if self.extra_tgt_lang is not None and split == "train":
+            extra_dataset = load_dataset(
+                "IWSLT/iwslt2017",
+                f"iwslt2017-{self.src_lang}-{self.extra_tgt_lang}",
+                split=split,
+                trust_remote_code=True,
+            )
+            _add_examples_from_hf_dataset(extra_dataset, self.extra_tgt_lang)
+
+        if split == "train":
+            random.shuffle(self.data)
+
+        # for item in self.dataset:
+        #     src_text = item["translation"][self.src_lang]
+        #     tgt_text = item["translation"][self.tgt_lang]
+
+        #     if self.tokenizer == "sentencepiece" and self.sp_src is not None:
+        #         src_tokens = self.sp_src.encode(src_text.strip(), out_type=str)
+        #         tgt_tokens = self.sp_tgt.encode(tgt_text.strip(), out_type=str)
+        #     elif self.tokenizer == "char":
+        #         src_tokens = char_tokenize(src_text)
+        #         tgt_tokens = char_tokenize(tgt_text)
+        #     else:
+        #         src_tokens = simple_tokenize(src_text)
+        #         tgt_tokens = simple_tokenize(tgt_text)
+
+        #     if len(src_tokens) == 0 or len(tgt_tokens) == 0:
+        #         continue
+        #     if len(src_tokens) > max_len or len(tgt_tokens) > max_len:
+        #         continue
+
+        #     src_ids = numericalize(src_tokens, src_vocab, add_bos_eos=True)
+        #     tgt_ids = numericalize(tgt_tokens, tgt_vocab, add_bos_eos=True)
+        #     self.data.append((src_ids, tgt_ids))
 
     def __len__(self):
         return len(self.data)
@@ -1115,26 +1166,73 @@ def build_data(args, src_vocab=None, tgt_vocab=None):
         tokenizer = src_vocab["tokenizer"]
         LOGGER.info(f"Tokenizer overridden by checkpoint: {tokenizer}")
 
-    if src_vocab is None or tgt_vocab is None:
-        LOGGER.info(f"Building vocab from raw training data for {args.src_lang}->{args.tgt_lang} "
-                    f"with tokenizer={tokenizer}...")
+    # if src_vocab is None or tgt_vocab is None:
+    #     LOGGER.info(f"Building vocab from raw training data for {args.src_lang}->{args.tgt_lang} "
+    #                 f"with tokenizer={tokenizer}...")
 
-        raw_train = load_dataset(
-            "IWSLT/iwslt2017",
-            f"iwslt2017-{args.src_lang}-{args.tgt_lang}",
-            split="train",
-            trust_remote_code=True,
-        )
+    #     raw_train = load_dataset(
+    #         "IWSLT/iwslt2017",
+    #         f"iwslt2017-{args.src_lang}-{args.tgt_lang}",
+    #         split="train",
+    #         trust_remote_code=True,
+    #     )
+
+    #     src_sentences = []
+    #     tgt_sentences = []
+    #     for i, item in enumerate(raw_train):
+    #         src_text = item["translation"][args.src_lang].strip()
+    #         tgt_text = item["translation"][args.tgt_lang].strip()
+    #         src_sentences.append(src_text)
+    #         tgt_sentences.append(tgt_text)
+    #         if args.max_train_samples is not None and i >= args.max_train_samples:
+    #             break
+    if src_vocab is None or tgt_vocab is None:
+        extra_tgt = getattr(args, "extra_tgt_lang", None)
+
+        if extra_tgt is None:
+            LOGGER.info(
+                f"Building vocab from raw training data for {args.src_lang}->{args.tgt_lang} "
+                f"with tokenizer={tokenizer}..."
+            )
+        else:
+            LOGGER.info(
+                "Building vocab from raw training data for multilingual "
+                f"{args.src_lang}->{{{args.tgt_lang}, {extra_tgt}}} "
+                f"with tokenizer={tokenizer}..."
+            )
 
         src_sentences = []
         tgt_sentences = []
-        for i, item in enumerate(raw_train):
-            src_text = item["translation"][args.src_lang].strip()
-            tgt_text = item["translation"][args.tgt_lang].strip()
-            src_sentences.append(src_text)
-            tgt_sentences.append(tgt_text)
-            if args.max_train_samples is not None and i >= args.max_train_samples:
-                break
+
+        # main task (src_lang -> tgt_lang)
+        lang_pairs = [(args.src_lang, args.tgt_lang)]
+        if extra_tgt is not None:
+            lang_pairs.append((args.src_lang, extra_tgt))
+
+        for src_lang, tgt_lang in lang_pairs:
+            raw_train = load_dataset(
+                "IWSLT/iwslt2017",
+                f"iwslt2017-{src_lang}-{tgt_lang}",
+                split="train",
+                trust_remote_code=True,
+            )
+
+            for i, item in enumerate(raw_train):
+                src_text = item["translation"][src_lang].strip()
+                tgt_text = item["translation"][tgt_lang].strip()
+
+                # multilingual：add a tag before source
+                # e.g. <2de> / <2fr>
+                if extra_tgt is not None:
+                    lang_tag = f"<2{tgt_lang}>"
+                    src_text = f"{lang_tag} {src_text}"
+
+                src_sentences.append(src_text)
+                tgt_sentences.append(tgt_text)
+
+                if args.max_train_samples is not None and i >= args.max_train_samples:
+                    break
+
 
         if tokenizer == "sentencepiece":
             if args.sp_model_prefix is not None:
@@ -1227,6 +1325,9 @@ def build_data(args, src_vocab=None, tgt_vocab=None):
     src_pad_idx = src_vocab["stoi"][SPECIAL_TOKENS["pad"]]
     tgt_pad_idx = tgt_vocab["stoi"][SPECIAL_TOKENS["pad"]]
 
+    extra_tgt = getattr(args, "extra_tgt_lang", None)
+    add_src_lang_tag = extra_tgt is not None
+
     train_dataset = TranslationDataset(
         "train",
         src_vocab,
@@ -1235,6 +1336,8 @@ def build_data(args, src_vocab=None, tgt_vocab=None):
         src_lang=args.src_lang,
         tgt_lang=args.tgt_lang,
         tokenizer=tokenizer,
+        extra_tgt_lang=extra_tgt,          # add second language in training set
+        add_src_lang_tag=add_src_lang_tag,
     )
     val_dataset = TranslationDataset(
         "validation",
@@ -1244,6 +1347,8 @@ def build_data(args, src_vocab=None, tgt_vocab=None):
         src_lang=args.src_lang,
         tgt_lang=args.tgt_lang,
         tokenizer=tokenizer,
+        extra_tgt_lang=None,               # only main task: en->de
+        add_src_lang_tag=add_src_lang_tag, # Still have tag
     )
 
     train_loader = DataLoader(
@@ -1726,6 +1831,14 @@ def parse_args():
                         help="Source language code for IWSLT17 (e.g., en)")
     parser.add_argument("--tgt_lang", type=str, default="de",
                         help="Target language code for IWSLT17 (e.g., de)")
+    parser.add_argument("--extra_tgt_lang", type=str, default=None,
+                help=(
+                    "Optional extra target language (same src_lang) for multilingual training, "
+                    "e.g. fr. If set, training data will be src_lang->{tgt_lang, extra_tgt_lang}, "
+                    "but validation/BLEU only use src_lang->tgt_lang."
+                ),
+    )
+
 
     # 通用参数
     parser.add_argument("--amp", action="store_true",
