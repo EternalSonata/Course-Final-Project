@@ -23,7 +23,7 @@ run_eval/
 runs/
 runs_mt/
 runs_mt_2/
-run_mt_multi_tfm/
+runs_mt_multi_tfm/
 *.log
 *.out
 *.err
