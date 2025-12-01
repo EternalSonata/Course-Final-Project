@@ -5,7 +5,7 @@ set -e
 PY=python                  
 SRC=en
 TGT=de
-OUTDIR="runs_mt"           
+OUTDIR="runs_mt_3"           
 MAX_LEN=80                
 EPOCHS=30                  
 BATCH=384
@@ -58,16 +58,23 @@ run_exp () {
 }
 
 
-# GRU + Attention
+run_exp rnn        char    "gru_char_seed42_ls0"    42 0.0
+run_exp rnn_lstm   char    "lstm_char_seed42_ls0"       42 0.0
 run_exp rnn        whitespace    "gru_ws_seed42_ls0"    42 0.0
-run_exp rnn        whitespace    "gru_ws_seed42_ls02"    42 0.2
-run_exp rnn        whitespace    "gru_ws_seed42_ls04"    42 0.4
+run_exp rnn_lstm   whitespace    "lstm_ws_seed42_ls0"       42 0.0
+run_exp rnn        sentencepiece    "gru_sp_seed42_ls0"    42 0.0
+run_exp rnn_lstm   sentencepiece    "lstm_sp_seed42_ls0"       42 0.0
+
+# GRU + Attention
+
+# run_exp rnn        whitespace    "gru_ws_seed42_ls02"    42 0.2
+# run_exp rnn        whitespace    "gru_ws_seed42_ls04"    42 0.4
 # run_exp rnn        whitespace    "gru_ws_seed42"        42 0.1
 # run_exp rnn        sentencepiece "gru_sp_seed42"        42 0.1
 
 # LSTM + Attention
-run_exp rnn_lstm   whitespace    "lstm_ws_seed42_ls0"       42 0.0
-run_exp rnn_lstm   whitespace    "lstm_ws_seed42_ls02"       42 0.2
-run_exp rnn_lstm   whitespace    "lstm_ws_seed42_ls04"       42 0.4
+
+# run_exp rnn_lstm   whitespace    "lstm_ws_seed42_ls02"       42 0.2
+# run_exp rnn_lstm   whitespace    "lstm_ws_seed42_ls04"       42 0.4
 # run_exp rnn_lstm   whitespace    "lstm_ws_seed42"       42 0.1
 # run_exp rnn_lstm   sentencepiece "lstm_sp_seed42"       42 0.1

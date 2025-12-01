@@ -1905,13 +1905,13 @@ def parse_args():
 
 
     # RNN 超参
-    parser.add_argument("--rnn_emb", type=int, default=512,
+    parser.add_argument("--rnn_emb", type=int, default=256,
                         help="RNN embedding dimension")
-    parser.add_argument("--rnn_hid", type=int, default=1024,
+    parser.add_argument("--rnn_hid", type=int, default=512,
                         help="RNN hidden dimension")
     parser.add_argument("--rnn_layers", type=int, default=2,
                         help="Number of GRU layers")
-    parser.add_argument("--rnn_dropout", type=float, default=0.3,
+    parser.add_argument("--rnn_dropout", type=float, default=0.2,
                         help="Dropout for RNN encoder & decoder")
 
     # Transformer 超参
