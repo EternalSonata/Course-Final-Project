@@ -291,7 +291,7 @@ class TranslationDataset(Dataset):
         self.tgt_vocab = tgt_vocab
         self.max_len = max_len
 
-        # tokenizer 信息
+        # tokenizer
         self.tokenizer = tokenizer
         self.sp_src = None
         self.sp_tgt = None
@@ -350,29 +350,6 @@ class TranslationDataset(Dataset):
 
         if split == "train":
             random.shuffle(self.data)
-
-        # for item in self.dataset:
-        #     src_text = item["translation"][self.src_lang]
-        #     tgt_text = item["translation"][self.tgt_lang]
-
-        #     if self.tokenizer == "sentencepiece" and self.sp_src is not None:
-        #         src_tokens = self.sp_src.encode(src_text.strip(), out_type=str)
-        #         tgt_tokens = self.sp_tgt.encode(tgt_text.strip(), out_type=str)
-        #     elif self.tokenizer == "char":
-        #         src_tokens = char_tokenize(src_text)
-        #         tgt_tokens = char_tokenize(tgt_text)
-        #     else:
-        #         src_tokens = simple_tokenize(src_text)
-        #         tgt_tokens = simple_tokenize(tgt_text)
-
-        #     if len(src_tokens) == 0 or len(tgt_tokens) == 0:
-        #         continue
-        #     if len(src_tokens) > max_len or len(tgt_tokens) > max_len:
-        #         continue
-
-        #     src_ids = numericalize(src_tokens, src_vocab, add_bos_eos=True)
-        #     tgt_ids = numericalize(tgt_tokens, tgt_vocab, add_bos_eos=True)
-        #     self.data.append((src_ids, tgt_ids))
 
     def __len__(self):
         return len(self.data)
@@ -1158,34 +1135,13 @@ def evaluate_epoch(model, dataloader, criterion):
 
 
 # -------------------------
-# 数据构建（多语言 + 可用 ckpt vocab）
+# build data
 # -------------------------
 def build_data(args, src_vocab=None, tgt_vocab=None):
     tokenizer = getattr(args, "tokenizer", "whitespace")
     if src_vocab is not None and "tokenizer" in src_vocab:
         tokenizer = src_vocab["tokenizer"]
         LOGGER.info(f"Tokenizer overridden by checkpoint: {tokenizer}")
-
-    # if src_vocab is None or tgt_vocab is None:
-    #     LOGGER.info(f"Building vocab from raw training data for {args.src_lang}->{args.tgt_lang} "
-    #                 f"with tokenizer={tokenizer}...")
-
-    #     raw_train = load_dataset(
-    #         "IWSLT/iwslt2017",
-    #         f"iwslt2017-{args.src_lang}-{args.tgt_lang}",
-    #         split="train",
-    #         trust_remote_code=True,
-    #     )
-
-    #     src_sentences = []
-    #     tgt_sentences = []
-    #     for i, item in enumerate(raw_train):
-    #         src_text = item["translation"][args.src_lang].strip()
-    #         tgt_text = item["translation"][args.tgt_lang].strip()
-    #         src_sentences.append(src_text)
-    #         tgt_sentences.append(tgt_text)
-    #         if args.max_train_samples is not None and i >= args.max_train_samples:
-    #             break
     if src_vocab is None or tgt_vocab is None:
         extra_tgt = getattr(args, "extra_tgt_lang", None)
 
@@ -1318,8 +1274,6 @@ def build_data(args, src_vocab=None, tgt_vocab=None):
             LOGGER.info(f"Vocab built: src={len(src_vocab['itos'])}, tgt={len(tgt_vocab['itos'])}")
     else:
         LOGGER.info("Using vocab loaded from checkpoint.")
-
-        # 从 ckpt vocab 中取 tokenizer 信息
         tokenizer = src_vocab.get("tokenizer", tokenizer)
 
     src_pad_idx = src_vocab["stoi"][SPECIAL_TOKENS["pad"]]
@@ -1374,7 +1328,7 @@ def build_data(args, src_vocab=None, tgt_vocab=None):
     return src_vocab, tgt_vocab, src_pad_idx, tgt_pad_idx, train_loader, val_loader
 
 # -------------------------
-# 模型构建（超参统一）
+# build model
 # -------------------------
 def build_model(args, src_vocab, tgt_vocab, src_pad_idx, tgt_pad_idx):
     if args.model == "rnn":
@@ -1497,91 +1451,6 @@ def build_model(args, src_vocab, tgt_vocab, src_pad_idx, tgt_pad_idx):
     criterion = create_criterion(args, tgt_vocab, tgt_pad_idx)
 
     return model, optimizer, criterion, decode_greedy, decode_beam, model_name, model_config
-# def build_model(args, src_vocab, tgt_vocab, src_pad_idx, tgt_pad_idx):
-#     if args.model == "rnn":
-#         model_name = "RNN-Attention"
-#         emb_dim = args.rnn_emb
-#         hid_dim = args.rnn_hid
-#         num_layers = args.rnn_layers
-
-#         enc = Encoder(
-#             vocab_size=len(src_vocab["itos"]),
-#             emb_dim=emb_dim,
-#             hid_dim=hid_dim,
-#             num_layers=num_layers,
-#             dropout=args.rnn_dropout,
-#         )
-#         dec = Decoder(
-#             vocab_size=len(tgt_vocab["itos"]),
-#             emb_dim=emb_dim,
-#             enc_hid_dim=hid_dim,
-#             dec_hid_dim=hid_dim,
-#             dropout=args.rnn_dropout,
-#         )
-#         model = Seq2Seq(enc, dec, src_pad_idx, tgt_pad_idx, device=DEVICE).to(DEVICE)
-
-#         default_lr = 1e-3
-#         decode_greedy = translate_sentence_greedy
-#         decode_beam = translate_sentence_beam_search
-#         model_config = {
-#             "model_type": "rnn",
-#             "src_vocab_size": len(src_vocab["itos"]),
-#             "tgt_vocab_size": len(tgt_vocab["itos"]),
-#             "emb_dim": emb_dim,
-#             "hid_dim": hid_dim,
-#             "num_layers": num_layers,
-#             "dropout": args.rnn_dropout,
-#         }
-
-#     elif args.model == "transformer":
-#         model_name = "Transformer"
-#         d_model = args.d_model
-#         nhead = args.nhead
-#         num_encoder_layers = args.enc_layers
-#         num_decoder_layers = args.dec_layers
-#         dim_feedforward = args.ffn_dim
-#         dropout = args.transformer_dropout
-
-#         model = TransformerSeq2Seq(
-#             src_vocab_size=len(src_vocab["itos"]),
-#             tgt_vocab_size=len(tgt_vocab["itos"]),
-#             src_pad_idx=src_pad_idx,
-#             tgt_pad_idx=tgt_pad_idx,
-#             d_model=d_model,
-#             nhead=nhead,
-#             num_encoder_layers=num_encoder_layers,
-#             num_decoder_layers=num_decoder_layers,
-#             dim_feedforward=dim_feedforward,
-#             dropout=dropout,
-#         ).to(DEVICE)
-
-#         default_lr = 3e-4
-#         decode_greedy = translate_sentence_greedy_transformer
-#         decode_beam = translate_sentence_beam_search_transformer
-#         model_config = {
-#             "model_type": "transformer",
-#             "src_vocab_size": len(src_vocab["itos"]),
-#             "tgt_vocab_size": len(tgt_vocab["itos"]),
-#             "d_model": d_model,
-#             "nhead": nhead,
-#             "num_encoder_layers": num_encoder_layers,
-#             "num_decoder_layers": num_decoder_layers,
-#             "dim_feedforward": dim_feedforward,
-#             "dropout": dropout,
-#         }
-#     else:
-#         raise ValueError(f"Unknown model type: {args.model}")
-
-#     if torch.cuda.device_count() > 1:
-#         LOGGER.info(f"Using {torch.cuda.device_count()} GPUs with DataParallel for {model_name}")
-#         model = nn.DataParallel(model)
-#     model = model.to(DEVICE)
-
-#     lr = args.lr if args.lr is not None else default_lr
-#     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-#     criterion = create_criterion(args, tgt_vocab, tgt_pad_idx)
-
-#     return model, optimizer, criterion, decode_greedy, decode_beam, model_name, model_config
 
 
 def create_scheduler(args, optimizer):
@@ -1620,7 +1489,7 @@ def create_scheduler(args, optimizer):
 
 
 # -------------------------
-# ckpt 加载 helper（处理 module. 前缀）
+# load model state
 # -------------------------
 def load_model_state(model, state_dict):
     model_state = model.state_dict()
@@ -1638,7 +1507,7 @@ def load_model_state(model, state_dict):
 
 
 # -------------------------
-# 训练 & 评估（支持 resume + 画曲线）
+# trian and evaluate
 # -------------------------
 def train_and_evaluate(args,
                        model,
@@ -1697,7 +1566,7 @@ def train_and_evaluate(args,
         train_losses.append(train_loss)
         val_losses.append(val_loss)
 
-        # 先更新 scheduler
+        # update scheduler
         if scheduler is not None:
             if args.lr_scheduler == "plateau":
                 scheduler.step(val_loss)
@@ -1751,12 +1620,12 @@ def train_and_evaluate(args,
     total_end = time.time()
     LOGGER.info(f"[{model_name}] Total training time: {(total_end - total_start)/60:.2f} minutes")
 
-    # 画曲线 + 保存 metrics
+    # draw curve + save metrics
     plot_loss_curves(exp_dir, train_losses, val_losses, model_name)
 
     LOGGER.info(f"[{model_name}] Training finished.")
     
-    # 用 best_ckpt 里的模型做最终评估
+    # evaluate the best model
     if os.path.exists(best_ckpt_path):
         LOGGER.info(f"[{model_name}] Loading best checkpoint from {best_ckpt_path} for final BLEU/chrF evaluation.")
         best_ckpt = torch.load(best_ckpt_path, map_location=DEVICE)
@@ -1816,17 +1685,17 @@ def train_and_evaluate(args,
 
 
 # -------------------------
-# 命令行参数
+# hyperparameters
 # -------------------------
 def parse_args():
     parser = argparse.ArgumentParser(description="RNN-Attention & Transformer MT baseline (IWSLT17)")
 
-    # 模型选择
+    # choosing model type
     parser.add_argument("--model", type=str, default="rnn",
                         choices=["rnn", "rnn_lstm", "transformer"],
                         help="Model type: rnn (GRU) / rnn_lstm / transformer")
 
-    # 语言对
+    # which language
     parser.add_argument("--src_lang", type=str, default="en",
                         help="Source language code for IWSLT17 (e.g., en)")
     parser.add_argument("--tgt_lang", type=str, default="de",
@@ -1840,7 +1709,6 @@ def parse_args():
     )
 
 
-    # 通用参数
     parser.add_argument("--amp", action="store_true",
                         help="Use GPU AMP (torch.amp.autocast + GradScaler)")
     parser.add_argument("--epochs", type=int, default=20,
@@ -1871,7 +1739,6 @@ def parse_args():
                     help="Minimum improvement in val_loss to reset patience counter.")
 
 
-    # 优化 & 正则
     parser.add_argument("--lr_scheduler", type=str, default="none",
                         choices=["none", "plateau", "noam"],
                         help="Learning rate scheduler type: none / plateau / noam (Transformer)")
@@ -1884,7 +1751,7 @@ def parse_args():
     parser.add_argument("--label_smoothing", type=float, default=0.0,
                         help="Label smoothing epsilon. 0.0 disables label smoothing.")
 
-    # BLEU 解码策略
+    # BLEU decode strategy
     parser.add_argument("--eval_decode", type=str, default="greedy",
                         choices=["greedy", "beam"],
                         help="Decode method for BLEU/chrF evaluation: greedy / beam")
@@ -1895,7 +1762,7 @@ def parse_args():
     parser.add_argument("--min_freq", type=int, default=2,
                         help="Min frequency for vocab")
 
-    # tokenizer 选择
+    # tokenizer choosing
     parser.add_argument("--tokenizer", type=str, default="whitespace",
                         choices=["whitespace", "sentencepiece", "char"],
                         help="Tokenizer type: whitespace, sentencepiece (BPE), or char-level")
@@ -1904,7 +1771,7 @@ def parse_args():
                              "If None, will use output_dir/spm_{src}_{tgt}.{{src,tgt}}")
 
 
-    # RNN 超参
+    # RNN hyperparameters
     parser.add_argument("--rnn_emb", type=int, default=256,
                         help="RNN embedding dimension")
     parser.add_argument("--rnn_hid", type=int, default=512,
@@ -1914,7 +1781,7 @@ def parse_args():
     parser.add_argument("--rnn_dropout", type=float, default=0.2,
                         help="Dropout for RNN encoder & decoder")
 
-    # Transformer 超参
+    # Transformer hyperparamaters
     parser.add_argument("--d_model", type=int, default=256,
                         help="Transformer model dimension")
     parser.add_argument("--nhead", type=int, default=4,
@@ -2001,10 +1868,6 @@ def main():
             if args.gpus is not None:
                 saved_args["gpus"] = args.gpus
 
-            # if hasattr(args, "beam_size"):
-            #     saved_args["beam_size"] = args.beam_size
-            # if hasattr(args, "length_penalty"):
-            #     saved_args["length_penalty"] = args.length_penalty
             args = argparse.Namespace(**saved_args)
         else:
             print(f"[WARN] eval_only + resume={args.resume}, "
